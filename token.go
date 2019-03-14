@@ -33,7 +33,7 @@ type ResponseToken struct {
 	Iin          struct {
 		Object              string `json:"object"`
 		Bin                 string `json:"bin"`
-		CardBranch          string `json:"card_branch"`
+		CardBrand           string `json:"card_brand"`
 		CardType            string `json:"card_type"`
 		CardCategory        string `json:"card_category"`
 		InstallmentsAllowed []int  `json:"installments_allowed"`
