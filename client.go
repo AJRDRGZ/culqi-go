@@ -1,6 +1,7 @@
 package culqi
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,14 +17,15 @@ const (
 
 // Errors API
 var (
-	ErrInvalidRequest = errors.New("La petición tiene una sintaxis inválida")
-	ErrAuthentication = errors.New("La petición no pudo ser procesada debido a problemas con las llaves")
+	errInvalidRequest = errors.New("La petición tiene una sintaxis inválida")
+	errAuthentication = errors.New("La petición no pudo ser procesada debido a problemas con las llaves")
+	errCard           = errors.New("No se pudo realizar el cargo a una tarjeta")
+	errLimitAPI       = errors.New("Estás haciendo muchas peticiones rápidamente al API o superaste tu límite designado")
+	errResource       = errors.New("El recurso no puede ser encontrado, es inválido o tiene un estado diferente al permitido")
+	errAPI            = errors.New("Error interno del servidor de Culqi")
+	errUnexpected     = errors.New("Error inesperado, el código de respuesta no se encuentra controlado")
 	ErrParameter      = errors.New("Algún parámetro de la petición es inválido")
-	ErrCard           = errors.New("No se pudo realizar el cargo a una tarjeta")
-	ErrLimitAPI       = errors.New("Estás haciendo muchas peticiones rápidamente al API o superaste tu límite designado")
-	ErrResource       = errors.New("El recurso no puede ser encontrado, es inválido o tiene un estado diferente al permitido")
-	ErrAPI            = errors.New("Error interno del servidor de Culqi")
-	ErrUnexpected     = errors.New("Error inesperado, el código de respuesta no se encuentra controlado")
+	ErrResponse       = errors.New("")
 )
 
 // WrapperResponse respuesta generica para respuestas GetAll
@@ -36,6 +38,14 @@ type WrapperResponse struct {
 			After  string `json:"after"`
 		} `json:"cursors"`
 	} `json:"paging"`
+}
+
+type errorResponse struct {
+	Object          string `json:"object"`
+	Type            string `json:"type"`
+	Code            string `json:"code"`
+	MerchantMessage string `json:"merchant_message"`
+	UserMessage     string `json:"user_message"`
 }
 
 func do(method, endpoint string, params url.Values, body io.Reader) ([]byte, error) {
@@ -63,31 +73,37 @@ func do(method, endpoint string, params url.Values, body io.Reader) ([]byte, err
 		return nil, err
 	}
 
+	rErr := &errorResponse{}
+	err = json.Unmarshal(obj, rErr)
+	if err != nil {
+		return nil, err
+	}
+
 	switch res.StatusCode {
 	case 400:
-		err = ErrInvalidRequest
+		err = errInvalidRequest
 	case 401:
-		err = ErrAuthentication
+		err = errAuthentication
 	case 422:
 		err = ErrParameter
 	case 402:
-		err = ErrCard
+		err = errCard
 	case 429:
-		err = ErrLimitAPI
+		err = errLimitAPI
 	case 404:
-		err = ErrResource
+		err = errResource
 	case 500, 503, 504:
-		err = ErrAPI
+		err = errAPI
 	}
 
 	if err != nil {
-		err = fmt.Errorf("%v: %s", err, string(obj))
-		return nil, err
+		ErrResponse = fmt.Errorf("%v | %s | %s", err, rErr.MerchantMessage, rErr.UserMessage)
+		return nil, ErrResponse
 	}
 
 	if res.StatusCode >= 200 && res.StatusCode <= 206 {
 		return obj, nil
 	}
 
-	return nil, fmt.Errorf("%v:(%d) %s", ErrUnexpected, res.StatusCode, string(obj))
+	return nil, fmt.Errorf("%v:(%d) %s", errUnexpected, res.StatusCode, string(obj))
 }
